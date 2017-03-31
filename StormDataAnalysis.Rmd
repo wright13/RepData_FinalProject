@@ -5,8 +5,10 @@ date: "March 31, 2017"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE,echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(stringdist)
 ```
 
 ## Synopsis
@@ -18,7 +20,21 @@ Data were obtained from the NOAA storm database, which records information about
 
 ### Reading in the data
 
+The data are stored as a csv file compressed with the bzip2 algorithm, which can be read into a dataframe using `read.csv()`. For the purpose of this project, we are only interested in the health and economic effects of weather events across the entire United States, so we'll select out only the relevant columns once we have our raw data. 
+```{r cache=TRUE}
+rawdata <- read.csv("repdata%2Fdata%2FStormData.csv.bz2")
+stormdata <- select(rawdata,c(EVTYPE,BGN_DATE,FATALITIES,INJURIES,PROPDMG,PROPDMGEXP,CROPDMG,CROPDMGEXP))
+```
 
+### Cleaning up the data
+
+#### Exclude pre-1996 data, since they only include a small subset of possible weather event types. Post-1996, there are 48 event types included in the database.
+
+#### Caluclate numeric values for property and crop damage from PROPDMG, CROPDMG, and their exponents
+
+#### Group on event type. We'll ignore date for now, although this might be an interesting variable to take into account later.
+
+#### Clean up the event type field. There should only be 48 event types. We'll use the stringdist package.
 
 ## Results
 
