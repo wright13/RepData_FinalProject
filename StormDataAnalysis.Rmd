@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(stringdist)
+library(lubridate)
 ```
 
 ## Synopsis
@@ -28,9 +29,29 @@ stormdata <- select(rawdata,c(EVTYPE,BGN_DATE,FATALITIES,INJURIES,PROPDMG,PROPDM
 
 ### Cleaning up the data
 
-#### Exclude pre-1996 data, since they only include a small subset of possible weather event types. Post-1996, there are 48 event types included in the database.
+First, we'll exclude pre-1996 data. According to the documentation, years prior to 1996 only include a small subset of possible weather event types. From January 1996 onward, there are 48 event types included in the database.
+
+```{r}
+stormdataclean <- mutate(stormdata, DATE = mdy_hms(BGN_DATE))
+stormdataclean <- filter(stormdataclean, year(DATE) >= 1996)
+stormdataclean <- droplevels(stormdataclean)
+```
+
 
 #### Caluclate numeric values for property and crop damage from PROPDMG, CROPDMG, and their exponents
+
+The PROPDMGEXP and CROPDMGEXP fields store the multipliers for the PROPDMG (property damage) and CROPDMG (crop damage) fields, respectively. These fields were messy in the original dataset, but fortunately the data from 1996 onwards is much more consistent. B stands for billion, M for million, K for thousand, and 0 for no multiplier.
+```{r}
+summary(stormdataclean$PROPDMGEXP)
+summary(stormdataclean$CROPDMGEXP)
+```
+
+To make the property and crop damage estimates easier to summarize, we'll calculate two new fields for the total property and crop damage instead of relying on the exponenent fields.
+```{r}
+exponentkey <- data.frame(EXP = c("0","B","K","M"),PROPMULT = c(1,1000000000,1000,1000000))
+
+```
+
 
 #### Group on event type. We'll ignore date for now, although this might be an interesting variable to take into account later.
 
