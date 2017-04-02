@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(stringdist)
 library(lubridate)
+library(stringr)
 ```
 
 ## Synopsis
@@ -21,10 +22,14 @@ Data were obtained from the NOAA storm database, which records information about
 
 ### Reading in the data
 
-The data are stored as a csv file compressed with the bzip2 algorithm, which can be read into a dataframe using `read.csv()`. For the purpose of this project, we are only interested in the health and economic effects of weather events across the entire United States, so we'll select out only the relevant columns once we have our raw data. 
+The data are stored as a csv file compressed with the bzip2 algorithm, which can be read into a dataframe using `read.csv()`. For the purpose of this project, we are only interested in the health and economic effects of weather events across the entire United States, so we'll select out only the relevant columns once we have our raw data. We'll also read in a text file of the 48 storm event types as specified in the documentation.
 ```{r cache=TRUE}
 rawdata <- read.csv("repdata%2Fdata%2FStormData.csv.bz2")
 stormdata <- select(rawdata,c(EVTYPE,BGN_DATE,FATALITIES,INJURIES,PROPDMG,PROPDMGEXP,CROPDMG,CROPDMGEXP))
+eventtypelookup <- read.table("EventTypes.txt",sep="\n")
+eventtypelookup$Event <- str_sub(eventtypelookup$V1,1,-3)
+eventtypelookup$Designator <- str_sub(eventtypelookup$V1,-2,-1)
+eventtypelookup <- select(eventtypelookup,-V1)
 ```
 
 ### Cleaning up the data
@@ -58,11 +63,20 @@ stormdataclean <- select(stormdataclean, -MULT)
 
 summary(stormdataclean)
 ```
-
+#### Clean up the event type field. There should only be 48 event types. We'll use the stringdist package.
+```{r}
+stormdataclean$EVTYPE <- toupper(stormdataclean$EVTYPE)
+stormdataclean$EVTYPE <- trimws(stormdataclean$EVTYPE)
+```
 
 #### Group on event type. We'll ignore date for now, although this might be an interesting variable to take into account later.
 
-#### Clean up the event type field. There should only be 48 event types. We'll use the stringdist package.
+```{r}
+storm.data.by.type <- group_by(stormdataclean,EVTYPE)
+storm.data.by.type <- summarize(storm.data.by.type, TOTALCROPDMG = sum(TOTALCROPDMG), TOTALPROPDMG = sum(TOTALPROPDMG))
+```
+
+
 
 ## Results
 
