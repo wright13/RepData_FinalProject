@@ -48,8 +48,15 @@ summary(stormdataclean$CROPDMGEXP)
 
 To make the property and crop damage estimates easier to summarize, we'll calculate two new fields for the total property and crop damage instead of relying on the exponenent fields.
 ```{r}
-exponentkey <- data.frame(EXP = c("0","B","K","M"),PROPMULT = c(1,1000000000,1000,1000000))
+exponentkey <- data.frame(EXP = c("0","B","K","M"),MULT = c(1,1000000000,1000,1000000))
+stormdataclean <- left_join(stormdataclean,exponentkey,by=c("CROPDMGEXP"="EXP"))
+stormdataclean <- mutate(stormdataclean, TOTALCROPDMG = CROPDMG*MULT)
+stormdataclean <- select(stormdataclean, -MULT)
+stormdataclean <- left_join(stormdataclean,exponentkey,by=c("PROPDMGEXP"="EXP"))
+stormdataclean <- mutate(stormdataclean, TOTALPROPDMG = PROPDMG*MULT)
+stormdataclean <- select(stormdataclean, -MULT)
 
+summary(stormdataclean)
 ```
 
 
