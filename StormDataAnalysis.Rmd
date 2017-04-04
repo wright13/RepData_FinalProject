@@ -1,6 +1,6 @@
 ---
-title: 'Course Project 2: Storm Data Analysis'
-author: "Sarah E. Wright"
+title: 'Economic and Public Health Impact of U.S. Weather Events'
+author: "Sarah W."
 date: "March 31, 2017"
 output: html_document
 ---
@@ -8,13 +8,16 @@ output: html_document
 ```{r setup, include=FALSE,echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
+library(tidyr)
 library(stringdist)
 library(lubridate)
 library(stringr)
+library(ggplot2)
 ```
 
 ## Synopsis
 
+Major weather events can have serious impacts on the public health and economy in communities across the U.S. This project aims to determine which types of weather events result in the greatest economic damage and the greatest number of injuries and fatalities. Weather event data from 2007 onwards were summarized to determine the total economic damage and total number of injuries and fatalities for each type of weather event from 2007 to 2011.
 
 ## Data Processing
 
@@ -34,18 +37,18 @@ eventtypelookup <- select(eventtypelookup,-V1)
 
 ### Cleaning up the data
 
-First, we'll exclude pre-1996 data. According to the documentation, years prior to 1996 only include a small subset of possible weather event types. From January 1996 onward, there are 48 event types included in the database.
+First, we'll exclude pre-2007 data. Prior to 2007, event types were not recorded in a standardized way and included misspellings and additional categories that did not represent actual weather events. Five years of data should be more than sufficient to give us a good idea of which weather events produce the greatest harmful effects. 
 
 ```{r}
 stormdataclean <- mutate(stormdata, DATE = mdy_hms(BGN_DATE))
-stormdataclean <- filter(stormdataclean, year(DATE) >= 1996)
+stormdataclean <- filter(stormdataclean, year(DATE) >= 2007)
 stormdataclean <- droplevels(stormdataclean)
 ```
 
 
 #### Caluclate numeric values for property and crop damage from PROPDMG, CROPDMG, and their exponents
 
-The PROPDMGEXP and CROPDMGEXP fields store the multipliers for the PROPDMG (property damage) and CROPDMG (crop damage) fields, respectively. These fields were messy in the original dataset, but fortunately the data from 1996 onwards is much more consistent. B stands for billion, M for million, K for thousand, and 0 for no multiplier.
+The PROPDMGEXP and CROPDMGEXP fields store the multipliers for the PROPDMG (property damage) and CROPDMG (crop damage) fields, respectively. These fields were messy in the original dataset, but fortunately the data from 2007 onwards are much more consistent. B stands for billion, M for million, K for thousand, and 0 for no multiplier.
 ```{r}
 summary(stormdataclean$PROPDMGEXP)
 summary(stormdataclean$CROPDMGEXP)
@@ -55,31 +58,56 @@ To make the property and crop damage estimates easier to summarize, we'll calcul
 ```{r}
 exponentkey <- data.frame(EXP = c("0","B","K","M"),MULT = c(1,1000000000,1000,1000000))
 stormdataclean <- left_join(stormdataclean,exponentkey,by=c("CROPDMGEXP"="EXP"))
+stormdataclean$MULT[is.na(stormdataclean$MULT)] <- 1
 stormdataclean <- mutate(stormdataclean, TOTALCROPDMG = CROPDMG*MULT)
 stormdataclean <- select(stormdataclean, -MULT)
 stormdataclean <- left_join(stormdataclean,exponentkey,by=c("PROPDMGEXP"="EXP"))
+stormdataclean$MULT[is.na(stormdataclean$MULT)] <- 1
 stormdataclean <- mutate(stormdataclean, TOTALPROPDMG = PROPDMG*MULT)
 stormdataclean <- select(stormdataclean, -MULT)
-
-summary(stormdataclean)
-```
-#### Clean up the event type field. There should only be 48 event types. We'll use the stringdist package.
-```{r}
-stormdataclean$EVTYPE <- toupper(stormdataclean$EVTYPE)
-stormdataclean$EVTYPE <- trimws(stormdataclean$EVTYPE)
 ```
 
-#### Group on event type. We'll ignore date for now, although this might be an interesting variable to take into account later.
-
+Now we'll group on event type and get the total crop damage, property damage, injuries, and fatalities for each event. We'll also create another field for total economic impact, which is just the sum of total crop damage and total property damage.
 ```{r}
 storm.data.by.type <- group_by(stormdataclean,EVTYPE)
-storm.data.by.type <- summarize(storm.data.by.type, TOTALCROPDMG = sum(TOTALCROPDMG), TOTALPROPDMG = sum(TOTALPROPDMG))
+storm.data.by.type <- summarize(storm.data.by.type, TOTALCROPDMG = sum(TOTALCROPDMG), TOTALPROPDMG = sum(TOTALPROPDMG),TOTALFATALITIES = sum(FATALITIES), TOTALINJURIES = sum(INJURIES))
+storm.data.by.type <- mutate(storm.data.by.type, EconomicImpact = TOTALCROPDMG+TOTALPROPDMG, PopulationImpact = TOTALFATALITIES+TOTALINJURIES)
+
 ```
 
+Since we're only interested in the most harmful weather events, we'll look at just the top 25% of damage and injury only for events that actually caused damage or injury. There are a large number of events that result in no damage or injury, so we'll exclude these events first.
+```{r}
+cropquantiles <- quantile(filter(storm.data.by.type,TOTALCROPDMG > 0)$TOTALCROPDMG)
+propquantiles <- quantile(filter(storm.data.by.type,TOTALPROPDMG > 0)$TOTALPROPDMG)
+econquantiles <- quantile(filter(storm.data.by.type,EconomicImpact > 0)$EconomicImpact)
 
+injuryquantiles <- quantile(filter(storm.data.by.type,TOTALINJURIES > 0)$TOTALINJURIES)
+fatalityquantiles <- quantile(filter(storm.data.by.type,TOTALFATALITIES > 0)$TOTALFATALITIES)
+
+maxcropdmg <- select(droplevels(filter(storm.data.by.type,TOTALCROPDMG > cropquantiles["75%"])),c(EVTYPE,TOTALCROPDMG))
+maxpropdmg <- select(droplevels(filter(storm.data.by.type,TOTALPROPDMG > econquantiles["75%"])),c(EVTYPE,TOTALPROPDMG))
+maxecondmg <- select(droplevels(filter(storm.data.by.type,EconomicImpact > propquantiles["75%"])),c(EVTYPE,EconomicImpact))
+maxinjury <- select(droplevels(filter(storm.data.by.type,TOTALINJURIES > injuryquantiles["75%"])),c(EVTYPE,TOTALINJURIES))
+maxfatality <- select(droplevels(filter(storm.data.by.type,TOTALFATALITIES > fatalityquantiles["75%"])),c(EVTYPE,TOTALFATALITIES))
+
+```
 
 ## Results
 
 ### Across the U.S., which types of events are most harmful with respect to population health?
+Tornadoes top the charts when it comes to injury and death. Heat, floods, and rip currents are also major causes of death. Lightning ranks oddly high when it comes to injuries; this might be worth investigating further.
+```{r}
+maxinjury$EVTYPE <- reorder(maxinjury$EVTYPE,-maxinjury$TOTALINJURIES)
+ggplot(data=maxinjury,aes(x=EVTYPE,y=TOTALINJURIES,fill=EVTYPE))+geom_bar(stat="identity")+theme(axis.text.x = element_text(angle=90,vjust=0.5,hjust=1),legend.position = "none")+ggtitle("Weather Events Causing Injury","Top 25% of weather events causing non-fatal injuries")+xlab("Event type")+ylab("Number of injuries")
+maxfatality$EVTYPE <- reorder(maxfatality$EVTYPE,-maxfatality$TOTALFATALITIES)
+ggplot(data=maxfatality,aes(x=EVTYPE,y=TOTALFATALITIES,fill=EVTYPE))+geom_bar(stat="identity")+theme(axis.text.x = element_text(angle=90,vjust=0.5,hjust=1),legend.position = "none")+ggtitle("Deadliest Weather Events","Top 25% of weather events resulting in fatality")+xlab("Event type")+ylab("Number of deaths")
+
+```
 
 ### Across the U.S., which types of events have the greatest economic consequences?
+
+We will combine crop damage and property damage in order to find out which weather events result in the greatest total economic damage. It appears that most weather that causes economic damage involves flooding, high wind, or winter weather.
+```{r}
+maxecondmg$EVTYPE <- reorder(maxecondmg$EVTYPE,-maxecondmg$EconomicImpact)
+ggplot(data=maxecondmg,aes(x=EVTYPE,y=EconomicImpact,fill=EVTYPE))+geom_bar(stat="identity")+theme(axis.text.x = element_text(angle=90,vjust=0.5,hjust=1),legend.position = "none")+ggtitle("Most Economically Damaging Weather Events","Top 25% of weather events causing damage to crops or property")+xlab("Event type")+ylab("Cost of damage in USD")
+```
